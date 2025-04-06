@@ -1,3 +1,4 @@
+# game_state.py
 import pygame
 from constants import (
     STATE_MENU, STATE_PLAYING, STATE_PAUSED, 
@@ -42,8 +43,10 @@ class MenuState(GameState):
             self.game.menu.handle_events(event)
         
     def update(self):
-        mouse_pos = pygame.mouse.get_pos()
-        self.game.menu.update(mouse_pos)
+        # Use scaled mouse position instead of raw position
+        raw_mouse_pos = pygame.mouse.get_pos()
+        scaled_mouse_pos = self.game.scale_mouse_pos(raw_mouse_pos)
+        self.game.menu.update(scaled_mouse_pos)
         
     def draw(self, screen):
         self.game.menu.draw(screen)
@@ -70,8 +73,9 @@ class PlayingState(GameState):
                 if event.key == pygame.K_ESCAPE:
                     self.game.set_state(STATE_PAUSED)
                 elif event.key == pygame.K_q:  # Q key for shooting
-                    # Get mouse position as the target
-                    mouse_pos = pygame.mouse.get_pos()
+                    # Get scaled mouse position as the target
+                    raw_mouse_pos = pygame.mouse.get_pos()
+                    mouse_pos = self.game.scale_mouse_pos(raw_mouse_pos)
                     self.create_click_indicator(mouse_pos)
                     
                     # Check if player has shooting capability
@@ -116,8 +120,8 @@ class PlayingState(GameState):
         self.game.player.update()
         
         # Keep player within screen bounds
-        self.game.player.x = max(0, min(self.game.player.x, SCREEN_WIDTH - self.game.player.size))
-        self.game.player.y = max(0, min(self.game.player.y, SCREEN_HEIGHT - self.game.player.size))
+        self.game.player.x = max(0, min(self.game.player.x, self.game.design_width - self.game.player.size))
+        self.game.player.y = max(0, min(self.game.player.y, self.game.design_height - self.game.player.size))
         
         # Update projectiles if they exist
         if hasattr(self.game, 'projectiles'):
@@ -129,8 +133,8 @@ class PlayingState(GameState):
                     continue
                     
                 # Check for projectile going off-screen
-                if (projectile.x < 0 or projectile.x > SCREEN_WIDTH or 
-                    projectile.y < 0 or projectile.y > SCREEN_HEIGHT):
+                if (projectile.x < 0 or projectile.x > self.game.design_width or 
+                    projectile.y < 0 or projectile.y > self.game.design_height):
                     self.game.projectiles.remove(projectile)
                     continue
                     
@@ -303,9 +307,11 @@ class PausedState(GameState):
                     return result
         
     def update(self):
-        mouse_pos = pygame.mouse.get_pos()
+        # Use scaled mouse position
+        raw_mouse_pos = pygame.mouse.get_pos()
+        scaled_mouse_pos = self.game.scale_mouse_pos(raw_mouse_pos)
         for button in self.game.pause_buttons:
-            button.update(mouse_pos)
+            button.update(scaled_mouse_pos)
         
     def draw(self, screen):
         # First draw the game (dimmed)
@@ -320,7 +326,7 @@ class PausedState(GameState):
         # Draw pause menu
         font = self.game.assets.get_font("main")
         text = font.render("PAUSED", True, (255, 255, 255))
-        text_rect = text.get_rect(center=(screen.get_width() // 2, 100))
+        text_rect = text.get_rect(center=(self.game.design_width // 2, 100))
         screen.blit(text, text_rect)
         
         # Draw buttons
@@ -358,20 +364,20 @@ class GameOverState(GameState):
         # Draw "Game Over" text
         font = self.game.assets.get_font("main")
         text = font.render("GAME OVER", True, (255, 0, 0))
-        text_rect = text.get_rect(center=(screen.get_width() // 2, screen.get_height() // 2 - 50))
+        text_rect = text.get_rect(center=(self.game.design_width // 2, self.game.design_height // 2 - 50))
         screen.blit(text, text_rect)
         
         # Draw score if available
         if hasattr(self.game, 'score'):
             score_font = self.game.assets.get_font("main")
             score_text = score_font.render(f"Final Score: {self.game.score}", True, (255, 255, 255))
-            score_rect = score_text.get_rect(center=(screen.get_width() // 2, screen.get_height() // 2 + 20))
+            score_rect = score_text.get_rect(center=(self.game.design_width // 2, self.game.design_height // 2 + 20))
             screen.blit(score_text, score_rect)
         
         # Draw "Press any key to continue" text
         prompt_font = self.game.assets.get_font("main")
         prompt_text = prompt_font.render("Press any key to return to menu", True, (255, 255, 255))
-        prompt_rect = prompt_text.get_rect(center=(screen.get_width() // 2, screen.get_height() // 2 + 80))
+        prompt_rect = prompt_text.get_rect(center=(self.game.design_width // 2, self.game.design_height // 2 + 80))
         screen.blit(prompt_text, prompt_rect)
     
     def enter(self):
@@ -406,20 +412,20 @@ class VictoryState(GameState):
         # Draw "Victory!" text
         font = self.game.assets.get_font("main")
         text = font.render("VICTORY!", True, (255, 215, 0))  # Gold color
-        text_rect = text.get_rect(center=(screen.get_width() // 2, screen.get_height() // 2 - 50))
+        text_rect = text.get_rect(center=(self.game.design_width // 2, self.game.design_height // 2 - 50))
         screen.blit(text, text_rect)
         
         # Draw score if available
         if hasattr(self.game, 'score'):
             score_font = self.game.assets.get_font("main")
             score_text = score_font.render(f"Final Score: {self.game.score}", True, (255, 255, 255))
-            score_rect = score_text.get_rect(center=(screen.get_width() // 2, screen.get_height() // 2 + 20))
+            score_rect = score_text.get_rect(center=(self.game.design_width // 2, self.game.design_height // 2 + 20))
             screen.blit(score_text, score_rect)
         
         # Draw "Press any key to continue" text
         prompt_font = self.game.assets.get_font("main")
         prompt_text = prompt_font.render("Press any key to return to menu", True, (255, 255, 255))
-        prompt_rect = prompt_text.get_rect(center=(screen.get_width() // 2, screen.get_height() // 2 + 80))
+        prompt_rect = prompt_text.get_rect(center=(self.game.design_width // 2, self.game.design_height // 2 + 80))
         screen.blit(prompt_text, prompt_rect)
     
     def enter(self):

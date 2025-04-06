@@ -22,7 +22,28 @@ class Game:
         pygame.init()
         pygame.mixer.init()
 
-        self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+        # Store original design dimensions
+        self.design_width = SCREEN_WIDTH
+        self.design_height = SCREEN_HEIGHT
+        
+        # Initialize fullscreen state
+        self.fullscreen = False  # Start in windowed mode
+        self.windowed_size = (SCREEN_WIDTH, SCREEN_HEIGHT)
+        
+        # Set up the display in windowed mode initially
+        self.screen = pygame.display.set_mode(self.windowed_size)
+        
+        # Get the actual screen dimensions
+        self.screen_width = self.screen.get_width()
+        self.screen_height = self.screen.get_height()
+        
+        # Create a render surface that matches the design resolution
+        # All game elements will be drawn to this surface, then scaled to the actual screen
+        self.render_surface = pygame.Surface((self.design_width, self.design_height))
+        
+        # Calculate scaling factors and offsets
+        self.update_scale_factors()
+        
         pygame.display.set_caption(TITLE)
         self.clock = pygame.time.Clock()
         self.running = True
@@ -32,7 +53,6 @@ class Game:
         self.ui_manager = UIManager(self)
         
         # Initizalize projectiles
-
         self.projectiles = []
 
         # Previous state
@@ -42,7 +62,7 @@ class Game:
         self.assets = AssetManager()
         
         # Create player
-        self.player = Player(SCREEN_WIDTH // 2, SCREEN_HEIGHT - 2 * PLAYER_SIZE)
+        self.player = Player(self.design_width // 2, self.design_height - 2 * PLAYER_SIZE)
         self.player.set_image(self.assets.get_image("player"))
         
         # Create enemies list (will be populated in reset_game)
@@ -58,17 +78,17 @@ class Game:
         font = self.assets.get_font("main")
         self.pause_buttons = [
             Button(
-                SCREEN_WIDTH // 2 - 100, 200, 200, 50,
+                self.design_width // 2 - 100, 200, 200, 50,
                 "Resume", font,
                 action=lambda: self.set_state(STATE_PLAYING)
             ),
             Button(
-                SCREEN_WIDTH // 2 - 100, 270, 200, 50,
+                self.design_width // 2 - 100, 270, 200, 50,
                 "Main Menu", font,
                 action=lambda: self.set_state(STATE_MENU)
             ),
             Button(
-                SCREEN_WIDTH // 2 - 100, 340, 200, 50,
+                self.design_width // 2 - 100, 340, 200, 50,
                 "Quit", font,
                 action=lambda: self.quit_game()
             )
@@ -85,11 +105,34 @@ class Game:
         
         # Initialize the game
         self.reset_game()
+    
+    def update_scale_factors(self):
+        """Calculate scaling factors and offsets for rendering and mouse input"""
+        # Calculate aspect ratios
+        render_ratio = self.design_width / self.design_height
+        screen_ratio = self.screen_width / self.screen_height
         
+        if screen_ratio > render_ratio:  # Screen is wider than game
+            # Height will match screen, width will be scaled
+            self.scaled_height = self.screen_height
+            self.scaled_width = int(self.scaled_height * render_ratio)
+            self.x_offset = (self.screen_width - self.scaled_width) // 2
+            self.y_offset = 0
+        else:  # Screen is taller than game
+            # Width will match screen, height will be scaled
+            self.scaled_width = self.screen_width
+            self.scaled_height = int(self.scaled_width / render_ratio)
+            self.x_offset = 0
+            self.y_offset = (self.screen_height - self.scaled_height) // 2
+        
+        # Calculate scale factors for mouse input
+        self.scale_factor_x = self.design_width / self.scaled_width
+        self.scale_factor_y = self.design_height / self.scaled_height
+    
     def reset_game(self):
         # Create player at center of screen
-        self.player = Player(SCREEN_WIDTH // 2 - PLAYER_SIZE // 2, 
-                            SCREEN_HEIGHT // 2 - PLAYER_SIZE // 2)
+        self.player = Player(self.design_width // 2 - PLAYER_SIZE // 2, 
+                            self.design_height // 2 - PLAYER_SIZE // 2)
         
         # Set player image if available
         if "player" in self.assets.images:
@@ -107,6 +150,43 @@ class Game:
 
         # Reset projectiles
         self.projectiles = [] 
+        
+    def toggle_fullscreen(self):
+        """Toggle between fullscreen and windowed mode"""
+        self.fullscreen = not self.fullscreen
+        
+        if self.fullscreen:
+            # Store current windowed size before going fullscreen
+            self.windowed_size = (self.screen.get_width(), self.screen.get_height())
+            self.screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+        else:
+            # Return to windowed mode with previous dimensions
+            self.screen = pygame.display.set_mode(self.windowed_size)
+        
+        # Update screen dimensions
+        self.screen_width = self.screen.get_width()
+        self.screen_height = self.screen.get_height()
+        
+        # Update scaling factors and offsets
+        self.update_scale_factors()
+        
+    def scale_mouse_pos(self, pos):
+        """Scale mouse position from screen coordinates to render surface coordinates"""
+        x, y = pos
+        
+        # First adjust for the offset (black bars)
+        x -= self.x_offset
+        y -= self.y_offset
+        
+        # Clamp coordinates to the scaled render area
+        x = max(0, min(x, self.scaled_width))
+        y = max(0, min(y, self.scaled_height))
+        
+        # Then scale to the design resolution
+        x = x * self.scale_factor_x
+        y = y * self.scale_factor_y
+        
+        return (x, y)
         
     def create_enemies(self, num_enemies):
         """Create a specified number of enemies with different types"""
@@ -137,8 +217,8 @@ class Game:
             
             while not valid_position and attempts < max_attempts:
                 # Generate random position
-                x = random.randint(0, SCREEN_WIDTH - ENEMY_SIZE)
-                y = random.randint(0, SCREEN_HEIGHT - ENEMY_SIZE)
+                x = random.randint(0, self.design_width - ENEMY_SIZE)
+                y = random.randint(0, self.design_height - ENEMY_SIZE)
                 
                 # Calculate distance to player
                 player_center_x = self.player.x + self.player.size / 2
@@ -163,9 +243,9 @@ class Game:
                 # Fallback: place at corner furthest from player
                 corners = [
                     (0, 0),  # Top-left
-                    (SCREEN_WIDTH - ENEMY_SIZE, 0),  # Top-right
-                    (0, SCREEN_HEIGHT - ENEMY_SIZE),  # Bottom-left
-                    (SCREEN_WIDTH - ENEMY_SIZE, SCREEN_HEIGHT - ENEMY_SIZE)  # Bottom-right
+                    (self.design_width - ENEMY_SIZE, 0),  # Top-right
+                    (0, self.design_height - ENEMY_SIZE),  # Bottom-left
+                    (self.design_width - ENEMY_SIZE, self.design_height - ENEMY_SIZE)  # Bottom-right
                 ]
                 
                 # Find the corner furthest from the player
@@ -223,7 +303,7 @@ class Game:
             if particle['time_left'] <= 0:
                 self.particles.remove(particle)
 
-    def draw_particles(self, screen):
+    def draw_particles(self, surface):
         """Draw particle effects"""
         for particle in self.particles:
             # Calculate fade based on remaining lifetime
@@ -245,7 +325,7 @@ class Game:
             )
             
             # Blit the surface to the screen
-            screen.blit(surf, (int(particle['x'] - size), int(particle['y'] - size)))
+            surface.blit(surf, (int(particle['x'] - size), int(particle['y'] - size)))
             
     def set_state(self, state_name):
         """Change the current game state"""
@@ -263,10 +343,64 @@ class Game:
         if state_name == STATE_PLAYING and self.previous_state != STATE_PAUSED:
             self.reset_game()
             
-    def handle_events(self):
+    def handle_events(self, events):
         """Process all game events"""
-        events = pygame.event.get()
-        self.states[self.current_state].handle_events(events)
+        # Process any events that need scaling (like mouse clicks)
+        scaled_events = []
+        
+        for event in events:
+            # Scale mouse positions in events
+            if event.type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP, pygame.MOUSEMOTION):
+                # Get the original event position
+                original_pos = event.pos
+                
+                # Check if the click is within the game area
+                in_game_area = (
+                    self.x_offset <= original_pos[0] <= self.x_offset + self.scaled_width and
+                    self.y_offset <= original_pos[1] <= self.y_offset + self.scaled_height
+                )
+                
+                if in_game_area:
+                    # Scale the position
+                    scaled_pos = self.scale_mouse_pos(original_pos)
+                    
+                    if event.type == pygame.MOUSEMOTION:
+                        # For motion events, also scale rel attribute
+                        rel_x, rel_y = event.rel
+                        scaled_rel = (
+                            rel_x * self.scale_factor_x, 
+                            rel_y * self.scale_factor_y
+                        )
+                        
+                        # Create a new event object with scaled values
+                        new_event = pygame.event.Event(
+                            pygame.MOUSEMOTION,
+                            {
+                                'pos': scaled_pos,
+                                'rel': scaled_rel,
+                                'buttons': event.buttons
+                            }
+                        )
+                    else:
+                        # For button events
+                        new_event = pygame.event.Event(
+                            event.type,
+                            {
+                                'pos': scaled_pos,
+                                'button': event.button
+                            }
+                        )
+                    
+                    scaled_events.append(new_event)
+                else:
+                    # Click is outside game area, ignore it
+                    pass
+            else:
+                # Keep other events unchanged
+                scaled_events.append(event)
+        
+        # Pass the scaled events to the current state
+        self.states[self.current_state].handle_events(scaled_events)
         
     def update(self):
         """Update the current game state"""
@@ -278,11 +412,34 @@ class Game:
         
     def draw(self):
         """Draw the current game state"""
-        self.states[self.current_state].draw(self.screen)
+        # Clear the render surface
+        self.render_surface.fill((0, 0, 0))
         
-        # Draw particles on top of everything
-        self.draw_particles(self.screen)
+        # Draw the current state to the render surface
+        self.states[self.current_state].draw(self.render_surface)
         
+        # Draw particles on the render surface
+        self.draw_particles(self.render_surface)
+        
+        # Clear the actual screen
+        self.screen.fill((0, 0, 0))
+        
+        # Scale the render surface to the calculated dimensions
+        scaled_surface = pygame.transform.smoothscale(self.render_surface, (self.scaled_width, self.scaled_height))
+        
+        # Blit the scaled surface to the screen with proper centering
+        self.screen.blit(scaled_surface, (self.x_offset, self.y_offset))
+        
+        # Draw a debug cursor at the scaled mouse position (optional, for testing)
+        # mouse_pos = pygame.mouse.get_pos()
+        # scaled_pos = self.scale_mouse_pos(mouse_pos)
+        # scaled_screen_pos = (
+        #     scaled_pos[0] / self.scale_factor_x + self.x_offset,
+        #     scaled_pos[1] / self.scale_factor_y + self.y_offset
+        # )
+        # pygame.draw.circle(self.screen, (255, 0, 0), (int(scaled_screen_pos[0]), int(scaled_screen_pos[1])), 5)
+        
+        # Update the display
         pygame.display.flip()
         
     def quit_game(self):
@@ -295,8 +452,25 @@ class Game:
             # Control frame rate
             self.clock.tick(FPS)
             
-            # Handle events
-            self.handle_events()
+            # Get all events once per frame
+            events = pygame.event.get()
+            
+            # Handle global events first (like fullscreen toggle)
+            for event in events:
+                if event.type == pygame.QUIT:
+                    self.running = False
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_F11:
+                        self.toggle_fullscreen()
+                    elif event.key == pygame.K_ESCAPE:
+                        # ESC key can exit fullscreen or quit game
+                        if self.fullscreen:
+                            self.toggle_fullscreen()
+                        else:
+                            self.quit_game()
+            
+            # Then pass events to the current state
+            self.handle_events(events)
             
             # Update game state
             self.update()

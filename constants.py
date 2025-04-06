@@ -11,7 +11,7 @@ PLAYER_SPEED = 5
 
 #Enemy settings
 ENEMY_SIZE = 40
-ENEMY_SPEED = 3
+ENEMY_SPEED = 1
 
 #Preset colors
 WHITE = (255, 255, 255)
