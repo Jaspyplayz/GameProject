@@ -13,6 +13,13 @@ class Player:
         self.score = 0
         self.target_position = None
         
+        # Add the missing attribute
+        self.is_attacking = False
+        self.attack_cooldown = 0
+
+        # Add damage attribute for projectiles
+        self.damage = 20  # Add this line to define player's damage
+        
     def set_image(self, image):
         """Set the player's image"""
         self.image = image
@@ -56,6 +63,12 @@ class Player:
         self.x = max(0, min(self.x, SCREEN_WIDTH - self.size))
         self.y = max(0, min(self.y, SCREEN_HEIGHT - self.size))
         
+        # Update attack cooldown
+        if self.attack_cooldown > 0:
+            self.attack_cooldown -= 1
+            if self.attack_cooldown <= 0:
+                self.is_attacking = False
+        
     def draw(self, screen):
         """Draw the player"""
         if self.image:
@@ -66,6 +79,14 @@ class Player:
         # Optionally draw a small indicator at the target position if moving
         if self.target_position:
             pygame.draw.circle(screen, (255, 255, 0), self.target_position, 3, 1)
+            
+        # Optionally draw attack indicator
+        if self.is_attacking:
+            # Draw a simple attack animation (e.g., a circle around the player)
+            attack_radius = self.size * 1.5
+            pygame.draw.circle(screen, (255, 100, 100), 
+                              (int(self.x + self.size/2), int(self.y + self.size/2)), 
+                              int(attack_radius), 2)
             
     def get_rect(self):
         """Get the player's collision rectangle"""
@@ -82,6 +103,43 @@ class Player:
     
     def stop_movement(self):
         """Stop the player's movement by clearing the target"""
-        self.target_x = None
-        self.target_y = None
+        self.target_position = None
+        
+    def attack(self):
+        """Initiate an attack"""
+        if not self.is_attacking:  # Only start a new attack if not already attacking
+            self.is_attacking = True
+            self.attack_cooldown = 30  # Number of frames the attack lasts
+            return True
+        return False
+        
+    def stop_attack(self):
+        """Stop the current attack"""
+        self.is_attacking = False
+        self.attack_cooldown = 0
+
+        # In player.py
+    def shoot(self, target_pos):
+        """Create a new projectile shooting toward the target position"""
+        # Calculate center of player for projectile start position
+        center_x = self.x + self.size / 2
+        center_y = self.y + self.size / 2
+        
+        # Create new projectile
+        from projectile import Projectile  # Import here to avoid circular imports
+        return Projectile(center_x, center_y, target_pos[0], target_pos[1], 
+                        speed=15, damage=self.damage)
+        
+    def can_shoot(self):
+        """Check if player can shoot (for cooldown)"""
+        if not hasattr(self, 'last_shot_time'):
+            self.last_shot_time = 0
+            
+        current_time = pygame.time.get_ticks()
+        cooldown = 300  # milliseconds between shots
+        
+        if current_time - self.last_shot_time >= cooldown:
+            self.last_shot_time = current_time
+            return True
+        return False
 

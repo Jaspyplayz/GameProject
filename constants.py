@@ -11,7 +11,7 @@ PLAYER_SPEED = 5
 
 #Enemy settings
 ENEMY_SIZE = 40
-ENEMY_SPEED = 1
+ENEMY_SPEED = 3
 
 #Preset colors
 WHITE = (255, 255, 255)
@@ -40,3 +40,16 @@ BUTTON_NORMAL_COLOR = (100, 100, 200)
 BUTTON_HOVER_COLOR = (150, 150, 255)
 BUTTON_TEXT_COLOR = WHITE
 
+# Add to constants.py
+# Asset directories
+IMAGE_DIR = "assets/images"
+SOUND_DIR = "assets/sounds"
+FONT_DIR = "assets/fonts"
+
+# Enemy types
+ENEMY_TYPES = ["basic", "fast", "tank"]
+ENEMY_COLORS = {
+    "basic": (255, 0, 0),      # Red
+    "fast": (255, 165, 0),     # Orange
+    "tank": (128, 0, 128)      # Purple
+}

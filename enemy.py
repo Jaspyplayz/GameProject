@@ -1,28 +1,86 @@
 import pygame
 import random
 import math
-from constants import ENEMY_SIZE, ENEMY_SPEED, RED, SCREEN_WIDTH, SCREEN_HEIGHT
+from constants import ENEMY_SIZE, ENEMY_SPEED, RED, SCREEN_WIDTH, SCREEN_HEIGHT, ENEMY_COLORS, ENEMY_TYPES
 
 class Enemy:
-    def __init__(self, x, y, target=None):
+    def __init__(self, x, y, target=None, enemy_type=None):
         self.x = x
         self.y = y
-        self.size = ENEMY_SIZE
-        self.speed = ENEMY_SPEED
-        self.color = RED
+        
+        # Determine enemy type
+        self.enemy_type = enemy_type if enemy_type else random.choice(ENEMY_TYPES)
+        
+        # Set properties based on enemy type
+        if self.enemy_type == "basic":
+            self.size = ENEMY_SIZE
+            self.speed = ENEMY_SPEED
+            self.health = 100
+            self.chase_weight = 0.3
+            self.damage = 10
+        elif self.enemy_type == "fast":
+            self.size = int(ENEMY_SIZE * 0.8)  # Smaller
+            self.speed = ENEMY_SPEED * 1.5     # Faster
+            self.health = 70                   # Weaker
+            self.chase_weight = 0.5            # More aggressive chasing
+            self.damage = 8
+        elif self.enemy_type == "tank":
+            self.size = int(ENEMY_SIZE * 1.3)  # Larger
+            self.speed = ENEMY_SPEED * 0.7     # Slower
+            self.health = 200                  # Tougher
+            self.chase_weight = 0.2            # Less aggressive chasing
+            self.damage = 15
+        else:  # Default fallback
+            self.size = ENEMY_SIZE
+            self.speed = ENEMY_SPEED
+            self.health = 100
+            self.chase_weight = 0.3
+            self.damage = 10
+        
+        # Set color based on enemy type
+        self.color = ENEMY_COLORS.get(self.enemy_type, RED)
+        
+        # Initialize other properties
         self.image = None
         self.direction = random.uniform(0, 2 * math.pi)  # Random direction in radians
         self.avoid_force = 0.5  # How strongly enemies avoid each other
-        self.detection_radius = ENEMY_SIZE * 2  # How far enemies detect each other
+        self.detection_radius = self.size * 2  # How far enemies detect each other
         self.target = target  # Store the target (player)
-        self.chase_weight = 0.3  # How strongly to chase the target (0 = no chase, 1 = direct chase)
+        
+        # Animation properties
+        self.animation_frame = 0
+        self.animation_speed = 0.2
+        self.animation_timer = 0
+        self.animation_frames = []
         
     def set_image(self, image):
         """Set the enemy's image"""
-        self.image = image
+        if image:
+            # Resize image to match enemy size
+            self.image = pygame.transform.scale(image, (self.size, self.size))
+        else:
+            self.image = None
+            
+    def set_animation_frames(self, frames):
+        """Set animation frames for the enemy"""
+        if frames and len(frames) > 0:
+            self.animation_frames = [
+                pygame.transform.scale(frame, (self.size, self.size))
+                for frame in frames
+            ]
+            if self.animation_frames:
+                self.image = self.animation_frames[0]
         
-    def update(self, enemies=None):
+    def update(self, enemies=None, delta_time=1/60):
         """Update enemy position and handle collisions"""
+        # Update animation
+        if self.animation_frames:
+            self.animation_timer += delta_time
+            if self.animation_timer >= self.animation_speed:
+                self.animation_timer = 0
+                self.animation_frame = (self.animation_frame + 1) % len(self.animation_frames)
+                self.image = self.animation_frames[self.animation_frame]
+        
         # Calculate movement based on direction
         dx = math.cos(self.direction) * self.speed
         dy = math.sin(self.direction) * self.speed
@@ -58,9 +116,19 @@ class Enemy:
             # Keep within bounds
             self.y = max(0, min(self.y, SCREEN_HEIGHT - self.size))
             
-        # Occasionally change direction randomly
-        if random.random() < 0.01:  # 1% chance each frame
-            self.direction += random.uniform(-0.5, 0.5)
+        # Enemy type-specific behavior
+        if self.enemy_type == "fast":
+            # Fast enemies occasionally make sharp turns
+            if random.random() < 0.03:  # 3% chance each frame
+                self.direction += random.uniform(-math.pi/2, math.pi/2)
+        elif self.enemy_type == "tank":
+            # Tank enemies are more persistent in their direction
+            if random.random() < 0.005:  # 0.5% chance each frame
+                self.direction += random.uniform(-0.2, 0.2)
+        else:
+            # Basic enemies occasionally change direction randomly
+            if random.random() < 0.01:  # 1% chance each frame
+                self.direction += random.uniform(-0.5, 0.5)
     
     def calculate_chase_vector(self):
         """Calculate vector to chase the target"""
@@ -117,7 +185,24 @@ class Enemy:
         if self.image:
             screen.blit(self.image, (self.x, self.y))
         else:
-            pygame.draw.rect(screen, self.color, (self.x, self.y, self.size, self.size))
+            # Draw different shapes based on enemy type if no image
+            if self.enemy_type == "basic":
+                pygame.draw.rect(screen, self.color, (self.x, self.y, self.size, self.size))
+            elif self.enemy_type == "fast":
+                # Draw triangle for fast enemy
+                points = [
+                    (self.x + self.size/2, self.y),
+                    (self.x + self.size, self.y + self.size),
+                    (self.x, self.y + self.size)
+                ]
+                pygame.draw.polygon(screen, self.color, points)
+            elif self.enemy_type == "tank":
+                # Draw circle for tank enemy
+                center = (self.x + self.size/2, self.y + self.size/2)
+                pygame.draw.circle(screen, self.color, center, self.size/2)
+            else:
+                # Default fallback
+                pygame.draw.rect(screen, self.color, (self.x, self.y, self.size, self.size))
             
         # Uncomment to visualize detection radius (for debugging)
         # pygame.draw.circle(screen, (255, 255, 255, 50), 
@@ -127,3 +212,8 @@ class Enemy:
     def get_rect(self):
         """Get the enemy's collision rectangle"""
         return pygame.Rect(self.x, self.y, self.size, self.size)
+        
+    def take_damage(self, amount):
+        """Enemy takes damage and returns True if defeated"""
+        self.health -= amount
+        return self.health <= 0

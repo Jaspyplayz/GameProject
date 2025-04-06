@@ -15,14 +15,17 @@ class AssetManager:
         os.makedirs(FONT_DIR, exist_ok=True)
         
         self._load_default_assets()
-        
+    
+    # Fixed indentation - this should be at the class level, not nested in __init__    
     def _load_default_assets(self):
         """Load essential game assets on initialization"""
         # Create placeholder images if files don't exist
         self._ensure_image("player", (50, 50), (0, 0, 255))  # Blue player
-        self._ensure_image("enemy", (40, 40), (255, 0, 0))   # Red enemy
         self._ensure_image("background", (800, 600), (50, 50, 50))  # Dark gray background
         self._ensure_image("menu_bg", (800, 600), (25, 25, 50))    # Dark blue menu background
+        
+        # Load enemy assets
+        self.load_enemy_assets()
         
         # Load default system font instead of custom fonts
         self.fonts["main"] = pygame.font.SysFont("Arial", 36)
@@ -32,7 +35,7 @@ class AssetManager:
         # Create empty sounds (will be silent)
         self.sounds["click"] = None
         self.sounds["game_over"] = None
-    
+
     def _ensure_image(self, name, size, color):
         """Create a placeholder image if the file doesn't exist"""
         file_path = os.path.join(IMAGE_DIR, f"{name}.png")
@@ -152,3 +155,55 @@ class AssetManager:
             print(f"Warning: Font '{name}' not found, using default")
             # Return a default font
             return pygame.font.SysFont("Arial", 36)
+        
+    def load_enemy_assets(self):
+        """Load assets for different enemy types"""
+        from constants import ENEMY_TYPES, ENEMY_COLORS
+        
+        for enemy_type in ENEMY_TYPES:
+            # Generate name like "enemy_basic", "enemy_fast", etc.
+            name = f"enemy_{enemy_type}"
+            file_path = os.path.join(IMAGE_DIR, f"{name}.png")
+            
+            # Check if custom enemy image exists
+            if os.path.exists(file_path):
+                self.load_image(name, file_path)
+            else:
+                # Create placeholder with appropriate color
+                color = ENEMY_COLORS.get(enemy_type, (255, 0, 0))  # Default to red
+                size = (40, 40)
+                
+                # Create a more distinctive enemy shape based on type
+                surf = pygame.Surface(size, pygame.SRCALPHA)
+                
+                if enemy_type == "basic":
+                    # Basic enemy: filled circle
+                    pygame.draw.circle(surf, color, (size[0]//2, size[1]//2), size[0]//2)
+                elif enemy_type == "fast":
+                    # Fast enemy: triangle
+                    points = [(size[0]//2, 0), (size[0], size[1]), (0, size[1])]
+                    pygame.draw.polygon(surf, color, points)
+                elif enemy_type == "tank":
+                    # Tank enemy: square with details
+                    pygame.draw.rect(surf, color, (0, 0, size[0], size[1]))
+                    pygame.draw.rect(surf, (0, 0, 0), (size[0]//4, size[1]//4, 
+                                                    size[0]//2, size[1]//2))
+                else:
+                    # Default: diamond shape
+                    points = [(size[0]//2, 0), (size[0], size[1]//2), 
+                            (size[0]//2, size[1]), (0, size[1]//2)]
+                    pygame.draw.polygon(surf, color, points)
+                
+                # Add outline
+                if enemy_type == "basic":
+                    pygame.draw.circle(surf, (255, 255, 255), 
+                                    (size[0]//2, size[1]//2), size[0]//2, 2)
+                elif enemy_type == "fast":
+                    pygame.draw.polygon(surf, (255, 255, 255), points, 2)
+                elif enemy_type == "tank":
+                    pygame.draw.rect(surf, (255, 255, 255), (0, 0, size[0], size[1]), 2)
+                else:
+                    pygame.draw.polygon(surf, (255, 255, 255), points, 2)
+                
+                self.images[name] = surf
+                print(f"Created placeholder for enemy type: {enemy_type}")

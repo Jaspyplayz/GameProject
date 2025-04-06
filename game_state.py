@@ -1,7 +1,8 @@
 import pygame
 from constants import (
     STATE_MENU, STATE_PLAYING, STATE_PAUSED, 
-    STATE_GAME_OVER, STATE_VICTORY
+    STATE_GAME_OVER, STATE_VICTORY,
+    SCREEN_WIDTH, SCREEN_HEIGHT, ENEMY_COLORS
 )
 
 class GameState:
@@ -49,7 +50,8 @@ class MenuState(GameState):
         
     def enter(self):
         # Reset menu selection or do other initialization
-        self.game.assets.play_sound("menu_music")
+        if hasattr(self.game.assets, 'play_sound') and "menu_music" in self.game.assets.sounds:
+            self.game.assets.play_sound("menu_music")
         
     def exit(self):
         # Clean up any menu-specific resources
@@ -63,40 +65,143 @@ class PlayingState(GameState):
     def handle_events(self, events):
         for event in events:
             if event.type == pygame.QUIT:
-                self.game.running = False
+                self.game.quit_game()
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
                     self.game.set_state(STATE_PAUSED)
-                    return
-                # Add a key to stop movement if needed
-                elif event.key == pygame.K_SPACE:
-                    self.game.player.stop_movement()
+                elif event.key == pygame.K_q:  # Q key for shooting
+                    # Get mouse position as the target
+                    mouse_pos = pygame.mouse.get_pos()
+                    self.create_click_indicator(mouse_pos)
+                    
+                    # Check if player has shooting capability
+                    if hasattr(self.game.player, 'shoot') and self.game.player.can_shoot():
+                        # Create projectile
+                        projectile = self.game.player.shoot(mouse_pos)
+                        if projectile:  # Make sure a valid projectile was returned
+                            if not hasattr(self.game, 'projectiles'):
+                                self.game.projectiles = []
+                            self.game.projectiles.append(projectile)
+                            # Play sound effect if available
+                            if hasattr(self.game.assets, 'play_sound') and "shoot" in self.game.assets.sounds:
+                                self.game.assets.play_sound("shoot")
+                    
             elif event.type == pygame.MOUSEBUTTONDOWN:
-                # Check if right mouse button was clicked
-                if event.button == 3:  # 3 is right mouse button
-                    # Set the target position for the player to move towards
-                    self.game.player.set_target(event.pos)
-                    # Create a click indicator
+                if event.button == 1:  # Left mouse button for shooting
                     self.create_click_indicator(event.pos)
-                # Add left click to stop movement if needed
-                elif event.button == 1:  # 1 is left mouse button
-                    self.game.player.stop_movement()
-        
+                    # Check if player has shooting capability
+                    if hasattr(self.game.player, 'shoot'):
+                        # Create projectile
+                        projectile = self.game.player.shoot(event.pos)
+                        if projectile:  # Make sure a valid projectile was returned
+                            if not hasattr(self.game, 'projectiles'):
+                                self.game.projectiles = []
+                            self.game.projectiles.append(projectile)
+                            # Play sound effect if available
+                            if hasattr(self.game.assets, 'play_sound') and "shoot" in self.game.assets.sounds:
+                                self.game.assets.play_sound("shoot")
+                    else:
+                        # Fallback to attack if shoot method doesn't exist
+                        if hasattr(self.game.player, 'attack'):
+                            self.game.player.attack()
+                elif event.button == 3:  # Right mouse button for movement
+                    self.create_click_indicator(event.pos)
+                    # Set player target position for movement
+                    if hasattr(self.game.player, 'set_target'):
+                        self.game.player.set_target(event.pos)
+
+                    
     def update(self):
         # Update player movement
         self.game.player.update()
         
-        # Update enemies with collision avoidance
-        for enemy in self.game.enemies:
+        # Keep player within screen bounds
+        self.game.player.x = max(0, min(self.game.player.x, SCREEN_WIDTH - self.game.player.size))
+        self.game.player.y = max(0, min(self.game.player.y, SCREEN_HEIGHT - self.game.player.size))
+        
+        # Update projectiles if they exist
+        if hasattr(self.game, 'projectiles'):
+            for projectile in self.game.projectiles[:]:  # Use a copy for safe iteration
+                # Update projectile position
+                if projectile.update():
+                    # Remove if lifetime expired
+                    self.game.projectiles.remove(projectile)
+                    continue
+                    
+                # Check for projectile going off-screen
+                if (projectile.x < 0 or projectile.x > SCREEN_WIDTH or 
+                    projectile.y < 0 or projectile.y > SCREEN_HEIGHT):
+                    self.game.projectiles.remove(projectile)
+                    continue
+                    
+                # Check for collision with enemies
+                for enemy in self.game.enemies[:]:
+                    if enemy.get_rect().colliderect(projectile.rect):
+                        # Enemy hit by projectile
+                        if enemy.take_damage(projectile.damage):
+                            # Enemy defeated
+                            enemy_color = ENEMY_COLORS.get(enemy.enemy_type, (255, 0, 0))
+                            self.game.create_death_effect(
+                                enemy.x + enemy.size/2,
+                                enemy.y + enemy.size/2,
+                                enemy_color
+                            )
+                            self.game.enemies.remove(enemy)
+                            self.game.score += 10  # Basic score for defeating enemy
+                            
+                            # Add bonus score based on enemy type
+                            if enemy.enemy_type == "fast":
+                                self.game.score += 5
+                            elif enemy.enemy_type == "tank":
+                                self.game.score += 10
+                        
+                        # Remove the projectile after hitting
+                        if projectile in self.game.projectiles:
+                            self.game.projectiles.remove(projectile)
+                        break
+        
+        # Update enemies
+        for enemy in self.game.enemies[:]:  # Use a copy of the list for safe iteration
             enemy.update(self.game.enemies)
             
+            # Check for collision with player
+            if self.game.player.get_rect().colliderect(enemy.get_rect()):
+                # Player hit by enemy
+                self.game.player.take_damage(enemy.damage)  # Use enemy's damage value
+                
+                # Check if player is defeated
+                if self.game.player.health <= 0:
+                    self.game.set_state(STATE_GAME_OVER)
+                    
+            # Check for player attack hitting enemy
+            if self.game.player.is_attacking:
+                attack_rect = self.game.player.get_attack_rect()
+                if attack_rect and attack_rect.colliderect(enemy.get_rect()):
+                    # Enemy hit by player attack
+                    if enemy.take_damage(self.game.player.damage):
+                        # Enemy defeated
+                        enemy_color = ENEMY_COLORS.get(enemy.enemy_type, (255, 0, 0))
+                        self.game.create_death_effect(
+                            enemy.x + enemy.size/2,
+                            enemy.y + enemy.size/2,
+                            enemy_color
+                        )
+                        self.game.enemies.remove(enemy)
+                        self.game.score += 10  # Basic score for defeating enemy
+                        
+                        # Add bonus score based on enemy type
+                        if enemy.enemy_type == "fast":
+                            self.game.score += 5  # Fast enemies worth more
+                        elif enemy.enemy_type == "tank":
+                            self.game.score += 10  # Tank enemies worth even more
+        
         # Update click indicators
         self.update_click_indicators()
             
-        # Check for collisions between player and enemies
-        self.check_collisions()
-
-    
+        # Check for victory condition (all enemies defeated)
+        if len(self.game.enemies) == 0:
+            self.game.set_state(STATE_VICTORY)
+            
     def create_click_indicator(self, position):
         # Create a temporary visual effect at the clicked position
         indicator = {
@@ -118,10 +223,18 @@ class PlayingState(GameState):
         
     def draw(self, screen):
         # Draw background
-        screen.blit(self.game.assets.get_image("background"), (0, 0))
+        if hasattr(self.game.assets, 'get_image') and "background" in self.game.assets.images:
+            screen.blit(self.game.assets.get_image("background"), (0, 0))
+        else:
+            screen.fill((0, 0, 0))  # Fallback to black background
         
         # Draw click indicators
         self.draw_click_indicators(screen)
+        
+        # Draw projectiles if they exist
+        if hasattr(self.game, 'projectiles'):
+            for projectile in self.game.projectiles:
+                projectile.draw(screen)
         
         # Draw player
         self.game.player.draw(screen)
@@ -131,7 +244,16 @@ class PlayingState(GameState):
             enemy.draw(screen)
         
         # Draw UI elements
-        self.game.ui_manager.draw_playing_ui(screen)
+        if hasattr(self.game, 'ui_manager'):
+            self.game.ui_manager.draw_playing_ui(screen)
+        else:
+            # Fallback UI if ui_manager not available
+            font = self.game.assets.get_font("small")
+            score_text = font.render(f"Score: {self.game.score}", True, (255, 255, 255))
+            health_text = font.render(f"Health: {self.game.player.health}", True, (255, 255, 255))
+            
+            screen.blit(score_text, (10, 10))
+            screen.blit(health_text, (10, 40))
         
     def draw_click_indicators(self, screen):
         for indicator in self.click_indicators:
@@ -140,17 +262,9 @@ class PlayingState(GameState):
                               (indicator['radius'], indicator['radius']), indicator['radius'], 2)
             screen.blit(s, (indicator['position'][0] - indicator['radius'], 
                            indicator['position'][1] - indicator['radius']))
-        
-    def check_collisions(self):
-        # Check player-enemy collisions
-        player_rect = self.game.player.get_rect()
-        for enemy in self.game.enemies:
-            if player_rect.colliderect(enemy.get_rect()):
-                self.game.set_state(STATE_GAME_OVER)
-                break
 
     def enter(self):
-    # Reset the player's target position when entering the playing state
+        # Reset the player's target position when entering the playing state
         if hasattr(self.game.player, 'target_x'):
             self.game.player.target_x = None
             self.game.player.target_y = None
@@ -158,9 +272,17 @@ class PlayingState(GameState):
         # Clear any click indicators
         self.click_indicators = []
         
+        # Initialize projectiles list if it doesn't exist
+        if not hasattr(self.game, 'projectiles'):
+            self.game.projectiles = []
+        
         # Play game music if available
         if hasattr(self.game.assets, 'play_sound') and "game_music" in self.game.assets.sounds:
             self.game.assets.play_sound("game_music")
+            
+    def exit(self):
+        # Clean up any playing state resources
+        pass
 
 class PausedState(GameState):
     def __init__(self, game):
@@ -204,6 +326,14 @@ class PausedState(GameState):
         # Draw buttons
         for button in self.game.pause_buttons:
             button.draw(screen)
+            
+    def enter(self):
+        # Pause any sounds or music if needed
+        pass
+    
+    def exit(self):
+        # Resume any sounds or music if needed
+        pass
 
 class GameOverState(GameState):
     def __init__(self, game):
@@ -252,7 +382,6 @@ class GameOverState(GameState):
     def exit(self):
         # Clean up any game over specific resources
         pass
-
 
 class VictoryState(GameState):
     def __init__(self, game):
