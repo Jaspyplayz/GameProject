@@ -1,0 +1,154 @@
+# assets.py
+import pygame
+import os
+from constants import IMAGE_DIR, SOUND_DIR, FONT_DIR
+
+class AssetManager:
+    def __init__(self):
+        self.images = {}
+        self.sounds = {}
+        self.fonts = {}
+        
+        # Create asset directories if they don't exist
+        os.makedirs(IMAGE_DIR, exist_ok=True)
+        os.makedirs(SOUND_DIR, exist_ok=True)
+        os.makedirs(FONT_DIR, exist_ok=True)
+        
+        self._load_default_assets()
+        
+    def _load_default_assets(self):
+        """Load essential game assets on initialization"""
+        # Create placeholder images if files don't exist
+        self._ensure_image("player", (50, 50), (0, 0, 255))  # Blue player
+        self._ensure_image("enemy", (40, 40), (255, 0, 0))   # Red enemy
+        self._ensure_image("background", (800, 600), (50, 50, 50))  # Dark gray background
+        self._ensure_image("menu_bg", (800, 600), (25, 25, 50))    # Dark blue menu background
+        
+        # Load default system font instead of custom fonts
+        self.fonts["main"] = pygame.font.SysFont("Arial", 36)
+        self.fonts["title"] = pygame.font.SysFont("Arial", 72)
+        self.fonts["small"] = pygame.font.SysFont("Arial", 24)
+        
+        # Create empty sounds (will be silent)
+        self.sounds["click"] = None
+        self.sounds["game_over"] = None
+    
+    def _ensure_image(self, name, size, color):
+        """Create a placeholder image if the file doesn't exist"""
+        file_path = os.path.join(IMAGE_DIR, f"{name}.png")
+        try:
+            # Try to load the image if it exists
+            if os.path.exists(file_path):
+                self.images[name] = pygame.image.load(file_path).convert_alpha()
+            else:
+                # Create a placeholder image
+                surf = pygame.Surface(size)
+                surf.fill(color)
+                
+                # Add some visual indication that this is a placeholder
+                if size[0] > 20 and size[1] > 20:
+                    pygame.draw.rect(surf, (255, 255, 255), 
+                                    (5, 5, size[0]-10, size[1]-10), 2)
+                    
+                    # Add text if the image is large enough
+                    if size[0] >= 80 and size[1] >= 20:
+                        font = pygame.font.SysFont("Arial", min(24, size[1]//2))
+                        text = font.render(name, True, (255, 255, 255))
+                        text_rect = text.get_rect(center=(size[0]//2, size[1]//2))
+                        surf.blit(text, text_rect)
+                
+                self.images[name] = surf
+                print(f"Created placeholder for missing image: {name}")
+        except Exception as e:
+            print(f"Error loading image {name}: {e}")
+            # Create a simple colored rectangle as fallback
+            surf = pygame.Surface(size)
+            surf.fill((255, 0, 255))  # Magenta for errors
+            self.images[name] = surf
+            
+    def load_image(self, name, path):
+        """Load an image and store it with the given name"""
+        try:
+            if os.path.exists(path):
+                image = pygame.image.load(path).convert_alpha()
+                self.images[name] = image
+                return image
+            else:
+                print(f"Image file not found: {path}")
+                # Create a placeholder
+                placeholder = pygame.Surface((100, 100))
+                placeholder.fill((255, 0, 255))  # Magenta for missing textures
+                self.images[name] = placeholder
+                return placeholder
+        except pygame.error as e:
+            print(f"Failed to load image {path}: {e}")
+            # Create a placeholder
+            placeholder = pygame.Surface((100, 100))
+            placeholder.fill((255, 0, 255))  # Magenta for missing textures
+            self.images[name] = placeholder
+            return placeholder
+            
+    def get_image(self, name):
+        """Get a loaded image by name"""
+        if name in self.images:
+            return self.images[name]
+        else:
+            print(f"Warning: Image '{name}' not found")
+            # Return a placeholder
+            placeholder = pygame.Surface((100, 100))
+            placeholder.fill((255, 0, 255))  # Magenta for missing textures
+            return placeholder
+            
+    def load_sound(self, name, path):
+        """Load a sound and store it with the given name"""
+        try:
+            if os.path.exists(path):
+                sound = pygame.mixer.Sound(path)
+                self.sounds[name] = sound
+                return sound
+            else:
+                print(f"Sound file not found: {path}")
+                return None
+        except pygame.error as e:
+            print(f"Failed to load sound {path}: {e}")
+            return None
+            
+    def get_sound(self, name):
+        """Get a loaded sound by name"""
+        if name in self.sounds:
+            return self.sounds[name]
+        else:
+            print(f"Warning: Sound '{name}' not found")
+            return None
+            
+    def play_sound(self, name):
+        """Play a sound by name"""
+        sound = self.get_sound(name)
+        if sound:
+            sound.play()
+            
+    def load_font(self, name, path, size):
+        """Load a font and store it with the given name"""
+        try:
+            if os.path.exists(path):
+                font = pygame.font.Font(path, size)
+            else:
+                print(f"Font file not found: {path}, using system font")
+                font = pygame.font.SysFont("Arial", size)
+            self.fonts[name] = font
+            return font
+        except pygame.error as e:
+            print(f"Failed to load font {path}: {e}")
+            # Use system font as fallback
+            font = pygame.font.SysFont("Arial", size)
+            self.fonts[name] = font
+            return font
+            
+    def get_font(self, name):
+        """Get a loaded font by name"""
+        if name in self.fonts:
+            return self.fonts[name]
+        else:
+            print(f"Warning: Font '{name}' not found, using default")
+            # Return a default font
+            return pygame.font.SysFont("Arial", 36)
